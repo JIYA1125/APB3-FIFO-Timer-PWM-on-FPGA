@@ -1,586 +1,638 @@
-# FPGA-Based APB3 FIFO, Elapsed-Time Timer & PWM Controller
+# FPGA-Based APB3 FIFO, PWM, UART & Elapsed Timer
 
-## 📌 Project Overview
+An FPGA-based **AMBA APB3 peripheral system** implemented in Verilog HDL on the **Digilent Nexys A7-100T** FPGA board.
 
-This project implements an **AMBA APB3-based peripheral system** on the **Digilent Nexys A7-100T FPGA board** using **Verilog HDL**.
-
-The system integrates three main APB3 peripherals:
-
-* 🗃️ **FIFO (First-In First-Out)**
-* ⏱️ **Elapsed-Time Timer**
-* 📈 **PWM (Pulse Width Modulation) Controller**
-
-An APB3 master communicates with these peripherals through an **APB3 decoder**. The timer measures the processing time of FIFO and PWM operations, and the elapsed time can be displayed on the **7-segment display**.
+The project integrates an **APB3 Master, Address Decoder, FIFO, PWM Controller, UART Interface, and an Elapsed-Time Timer**. The timer measures the time taken between a FIFO write operation and a FIFO read operation and displays the elapsed time on the onboard **4-digit 7-segment display**.
 
 ---
 
-## 🎯 Objectives
+## 🚀 Project Overview
 
-The main objectives of this project are:
+This project demonstrates how multiple peripherals can communicate through the **AMBA APB3 protocol**.
 
-1. To understand and implement the **AMBA APB3 protocol**.
-2. To design an APB3 master and peripheral slaves using Verilog HDL.
-3. To integrate multiple peripherals using an APB address decoder.
-4. To implement a FIFO memory block.
-5. To generate PWM signals with selectable duty cycles.
-6. To implement an elapsed-time timer.
-7. To display timer information using the Nexys A7 7-segment display.
-8. To verify the complete design using **Vivado Behavioral Simulation**.
-9. To implement and test the design on an FPGA board.
+The APB master generates peripheral transactions, while the decoder selects the appropriate slave based on the APB address.
 
----
+### Main peripherals
 
-## 🏗️ System Architecture
-
-```text
-                         ┌─────────────────────┐
-                         │      APB3 Master     │
-                         └──────────┬──────────┘
-                                    │
-                           APB3 Interface
-                                    │
-                         ┌──────────▼──────────┐
-                         │     APB3 Decoder     │
-                         └──────┬─────┬─────┬──┘
-                                │     │     │
-                    ┌───────────┘     │     └───────────┐
-                    │                 │                 │
-              ┌─────▼─────┐    ┌─────▼─────┐    ┌─────▼─────┐
-              │    FIFO   │    │    PWM    │    │   TIMER   │
-              │   Slave   │    │   Slave   │    │   Slave   │
-              └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
-                    │                 │                 │
-                    │                 │                 │
-                    └─────────────────┼─────────────────┘
-                                      │
-                             ┌────────▼────────┐
-                             │  FPGA Outputs   │
-                             │ LEDs / 7-Segment│
-                             └─────────────────┘
-```
+* APB3 Master
+* APB3 Address Decoder
+* FIFO Memory
+* APB FIFO Slave
+* PWM Slave
+* UART Slave
+* Baud Rate Generator
+* UART Transmitter
+* Elapsed-Time Timer
+* 4-Digit 7-Segment Display
+* Push-button debounce and edge detection
 
 ---
 
-## 🔌 APB Address Map
-
-Each peripheral is assigned a unique APB address.
-
-| Peripheral | Address |
-| ---------- | ------: |
-| UART       |  `0x05` |
-| GPIO       |  `0x10` |
-| FIFO       |  `0x20` |
-| PWM        |  `0x30` |
-| Timer      |  `0x40` |
-
-### Timer Address
-
-The timer is assigned:
+## 🧩 System Architecture
 
 ```text
-0x40
-```
-
-Binary representation:
-
-```text
-0100 0000
-```
-
-The address decoder detects `8'h40` and activates the timer peripheral.
-
----
-
-# 🗃️ FIFO Peripheral
-
-The FIFO implements a **First-In First-Out** data storage mechanism.
-
-### Features
-
-* 8-bit data width
-* Multiple storage locations
-* Write and read operations
-* Full and empty status
-* APB3 interface
-* Error detection for invalid read/write operations
-
-### Basic Operation
-
-```text
-Write Data
-    ↓
-   FIFO
-    ↓
-Read Data
-```
-
-The FIFO stores data in the order in which it is written.
-
-For example:
-
-```text
-Write: 10 → 20 → 30 → 40
-
-Read:  10 → 20 → 30 → 40
+                    ┌─────────────────────┐
+                    │      APB3 MASTER    │
+                    └──────────┬──────────┘
+                               │
+                         APB3 BUS
+                               │
+                    ┌──────────▼──────────┐
+                    │    APB3 DECODER     │
+                    └──────┬───┬───┬──────┘
+                           │   │   │
+             ┌─────────────┘   │   └─────────────┐
+             │                 │                 │
+       ┌─────▼─────┐     ┌────▼─────┐     ┌─────▼─────┐
+       │    UART   │     │   FIFO   │     │    PWM    │
+       │   SLAVE   │     │   SLAVE  │     │   SLAVE   │
+       └───────────┘     └────┬─────┘     └───────────┘
+                              │
+                         ┌────▼────┐
+                         │  FIFO   │
+                         │ MEMORY  │
+                         └────┬────┘
+                              │
+                    FIFO WRITE / FIFO READ
+                              │
+                    ┌─────────▼─────────┐
+                    │  ELAPSED TIMER   │
+                    └─────────┬─────────┘
+                              │
+                       Elapsed Seconds
+                              │
+                    ┌─────────▼─────────┐
+                    │   7-SEGMENT      │
+                    │     DISPLAY       │
+                    └───────────────────┘
 ```
 
 ---
 
-# 📈 PWM Peripheral
+## 📍 APB Address Map
 
-The PWM slave generates a PWM output signal with selectable duty cycles.
+| Address | Peripheral    | Function                |
+| ------: | ------------- | ----------------------- |
+|   `05h` | UART          | UART communication      |
+|   `10h` | GPIO / Legacy | Reserved/legacy address |
+|   `20h` | FIFO          | FIFO read/write         |
+|   `30h` | PWM           | PWM duty-cycle control  |
 
-The duty cycle can be selected through the APB interface.
-
-| Selection | Duty Cycle |
-| --------- | ---------: |
-| `00`      |        25% |
-| `01`      |        50% |
-| `10`      |        75% |
-| `11`      |       100% |
-
-The PWM output is available as:
-
-```text
-pwm_out
-```
-
-### PWM Concept
-
-```text
-25% Duty Cycle
-
-____        ____
-    |______|
-
-50% Duty Cycle
-
-________
-        |________
-
-75% Duty Cycle
-
-____________
-            |____
-```
-
-The duty cycle determines the percentage of one PWM period for which the output remains HIGH.
+The elapsed timer is **internally connected to the FIFO operation** and does not require a separate APB address.
 
 ---
 
 # ⏱️ Elapsed-Time Timer
 
-The timer measures the amount of time taken by a selected operation.
-
-The timer counts upward:
+The timer measures the time between:
 
 ```text
-0 → 1 → 2 → 3 → 4 → 5 → ...
+FIFO WRITE → Timer START → FIFO READ → Timer STOP
 ```
 
-The timer can be started when an operation begins and stopped when the operation is completed.
+### Timer operation
 
-### Timer Flow
+A successful FIFO write generates:
 
 ```text
-Operation Start
-       ↓
- Timer START
-       ↓
-0 → 1 → 2 → 3 → 4 → 5 ...
-       ↓
-Operation Complete
-       ↓
- Timer STOP
-       ↓
-Display Elapsed Time
+fifo_wr_en = 1
 ```
 
-The timer uses a clock counter to determine when one second has elapsed.
+This starts the timer.
 
-For FPGA hardware, the timer uses the system clock frequency:
+The timer then counts:
 
 ```text
-CLK_PER_SEC = 100,000,000
+1 → 2 → 3 → 4 → 5 → ...
 ```
 
-for a 100 MHz clock.
+When a successful FIFO read occurs:
 
-For behavioral simulation, a smaller value can be used to make the timer run faster.
-
-Example:
-
-```verilog
-.CLK_PER_SEC(10)
+```text
+fifo_rd_en = 1
 ```
 
-This allows the timer to be verified quickly in simulation.
+the timer stops.
+
+The final elapsed time remains stored and is displayed on the 7-segment display.
+
+### Important behavior
+
+* Timer starts only on the first FIFO write.
+* Additional FIFO writes do not restart the timer.
+* Timer stops when a FIFO read is successfully performed.
+* After stopping, the elapsed value remains frozen.
+* The hardware timer uses the 100 MHz Nexys A7 clock.
+* For simulation, the clock-per-second value is reduced to make verification faster.
 
 ---
 
-# 🖥️ 7-Segment Display
+# 🗃️ FIFO Operation
 
-The elapsed timer value can be displayed on the Nexys A7's 4-digit 7-segment display.
+The FIFO is an **8-bit, 8-location FIFO**.
 
-The timer value is stored in BCD format.
+```text
+Data width  : 8 bits
+Depth       : 8
+Count       : 0 to 8
+```
+
+It uses:
+
+* Write pointer
+* Read pointer
+* Memory array
+* FIFO counter
+* Full flag
+* Empty flag
+
+### FIFO Write
+
+The FIFO address is:
+
+```text
+20h
+```
 
 For example:
 
 ```text
-0000
+16'hA520
+```
+
+means:
+
+```text
+A5 → Data
+20 → FIFO Address
+```
+
+Therefore:
+
+```text
+A5 is written into FIFO
+```
+
+A successful write produces:
+
+```text
+wr_en = 1
+fifo_wr_en = 1
+```
+
+and the FIFO count increases.
+
+---
+
+# 📥 FIFO Read
+
+The FIFO read is performed using the **BTND push button** in the current implementation.
+
+When a valid FIFO read occurs:
+
+```text
+rd_en = 1
+fifo_rd_en = 1
+```
+
+The FIFO returns the stored data and the FIFO count decreases.
+
+At the same time:
+
+```text
+fifo_rd_en → Timer Stop
+```
+
+---
+
+# 🌊 PWM Controller
+
+The PWM peripheral is mapped to:
+
+```text
+30h
+```
+
+The duty cycle is selected using the lower two bits of the APB write data.
+
+| `pwdata[1:0]` | Duty Cycle |
+| :-----------: | ---------: |
+|      `00`     |        25% |
+|      `01`     |        50% |
+|      `10`     |        75% |
+|      `11`     |       100% |
+
+The PWM output is available on the FPGA output:
+
+```text
+pwm_out
+```
+
+---
+
+# 📡 UART
+
+The project includes an APB-connected UART peripheral consisting of:
+
+* UART Slave
+* Baud Generator
+* UART Transmitter
+
+The UART peripheral is selected using:
+
+```text
+05h
+```
+
+The UART transmitter output is connected to the FPGA `tx` pin.
+
+---
+
+# 🔘 Push Buttons
+
+The Nexys A7 push buttons are processed using:
+
+```text
+Button
+   ↓
+Synchronizer
+   ↓
+Debounce
+   ↓
+Edge Detector
+   ↓
+Single-cycle Pulse
+```
+
+This prevents mechanical button bouncing from generating multiple FIFO operations.
+
+Current controls:
+
+| Input  | Function     |
+| ------ | ------------ |
+| `btnU` | FIFO Write   |
+| `btnD` | FIFO Read    |
+| `rst`  | System Reset |
+
+---
+
+# 🔢 7-Segment Display
+
+The onboard 4-digit 7-segment display shows the elapsed timer value.
+
+Example:
+
+```text
 0001
 0002
 0003
 0004
 0005
-...
 ```
 
-The display multiplexer selects the required digit and continuously refreshes the display.
+During timer operation the displayed value increases once per simulated/actual second according to the configured clock frequency.
+
+The display uses multiplexing to drive all four digits.
 
 ---
 
-# 🔄 APB3 Communication
+# 💡 LED Debugging
 
-The project uses the standard APB3 transaction sequence:
+The LEDs are also used for hardware debugging.
 
-```text
-IDLE
-  ↓
-SETUP
-  ↓
-ACCESS
-  ↓
-IDLE
-```
+| LED  | Signal               |
+| ---- | -------------------- |
+| LED0 | APB Select           |
+| LED1 | APB Enable           |
+| LED2 | APB Write            |
+| LED3 | APB Transaction Done |
+| LED4 | Timer Running        |
+| LED5 | FIFO Write Pulse     |
+| LED6 | FIFO Read Pulse      |
+| LED7 | FIFO Full            |
+| LED8 | FIFO Empty           |
+| LED9 | PWM Output           |
 
-### SETUP Phase
-
-The master selects the required peripheral.
-
-```text
-PSEL = 1
-PENABLE = 0
-```
-
-### ACCESS Phase
-
-The transfer takes place.
-
-```text
-PSEL = 1
-PENABLE = 1
-```
-
-The slave responds using:
-
-```text
-PREADY
-PRDATA
-PSLVERR
-```
+This makes it easier to observe the internal operation directly on the FPGA board.
 
 ---
 
-# 📂 Project Structure
+# 🧪 Behavioral Simulation
 
-A possible project structure is:
+A dedicated testbench is included:
 
 ```text
-APB3-FIFO-TIMER-PWM/
-│
-├── README.md
-│
-├── rtl/
-│   ├── apb3_master.v
-│   ├── apb3_decoder.v
-│   ├── apb_fifo_slave.v
-│   ├── FIFO.v
-│   ├── pwm_slave.v
-│   ├── elapsed_timer.v
-│   ├── display_mux.v
-│   └── top.v
-│
-├── simulation/
-│   ├── elapsed_timer_tb.v
-│   └── top_tb.v
-│
-├── constraints/
-│   └── NexysA7.xdc
-│
-└── docs/
-    └── project_documentation.pdf
+top_tb.v
 ```
+
+The simulation verifies:
+
+1. System reset
+2. FIFO write
+3. Timer start
+4. Timer counting
+5. Second FIFO write
+6. FIFO read
+7. Timer stop
+8. Timer value freezing
+
+### Simulation Timer
+
+For practical simulation, the timer parameter is changed from:
+
+```text
+100,000,000 clocks/second
+```
+
+to:
+
+```text
+10 clocks/second
+```
+
+This allows the timer behavior to be observed quickly in XSim.
 
 ---
 
-# 🧪 Simulation
+# 📊 Simulation Signals
 
-The design can be verified using **Xilinx Vivado Behavioral Simulation**.
-
-For timer verification, the simulation testbench uses a smaller clock-per-second value.
-
-Example:
-
-```verilog
-elapsed_timer #(
-    .CLK_PER_SEC(10)
-)
-```
-
-This makes it possible to observe the timer counting during a short simulation.
-
-### Expected Simulation
+The following signals are useful for waveform verification:
 
 ```text
-Time
- │
- │     START
- │       ↓
- └───────┬─────────────────────────────
-         │
-         0    1    2    3    4    5
-         │    │    │    │    │    │
-         └────Timer Counting─────────┐
-                                    │
-                                  STOP
+fifo_wr_en
+fifo_rd_en
+timer_running
+timer_seconds
 ```
 
-The important signals to observe are:
+FIFO internal signals:
 
 ```text
-clk
-rst
-start
-stop
-running
-bcd_seconds
+wr_en
+rd_en
+count
+full
+empty
+```
+
+Expected sequence:
+
+```text
+FIFO WRITE
+    ↓
+fifo_wr_en = 1
+    ↓
+timer_running = 1
+    ↓
+timer_seconds = 1, 2, 3, 4...
+    ↓
+FIFO READ
+    ↓
+fifo_rd_en = 1
+    ↓
+timer_running = 0
+    ↓
+timer_seconds freezes
 ```
 
 ---
 
 # 🛠️ Tools & Technologies
 
-| Tool / Technology | Usage                             |
-| ----------------- | --------------------------------- |
-| Verilog HDL       | Hardware description              |
-| Xilinx Vivado     | Design, simulation and synthesis  |
-| Nexys A7-100T     | FPGA development board            |
-| AMBA APB3         | Peripheral communication protocol |
-| 7-Segment Display | Timer output                      |
-| LEDs              | Hardware debugging                |
+* **Verilog HDL**
+* **Xilinx Vivado**
+* **XSim Behavioral Simulator**
+* **AMBA APB3**
+* **FPGA**
+* **Nexys A7-100T**
+* **UART**
+* **FIFO**
+* **PWM**
+* **7-Segment Display**
 
 ---
 
-# ⚙️ FPGA Board
+# 💻 Target Hardware
 
-### Digilent Nexys A7-100T
+**Board:**
 
-The design targets the:
+Digilent Nexys A7-100T
 
-```text
-Nexys A7-100T
-```
-
-FPGA device:
+**FPGA:**
 
 ```text
 XC7A100TCSG324-1
 ```
 
-The project uses the board's:
+**System Clock:**
 
-* 100 MHz clock
-* Push buttons
-* Switches
-* LEDs
-* 4-digit 7-segment display
+```text
+100 MHz
+```
 
 ---
 
-# 🚀 How to Run the Project
-
-## 1. Open Vivado
-
-Create or open the Vivado project.
-
-## 2. Add Design Sources
-
-Add all Verilog modules inside the `rtl` directory.
-
-## 3. Add Simulation Sources
-
-Add the required testbench files:
+# 📁 Project Structure
 
 ```text
-elapsed_timer_tb.v
-top_tb.v
+APB3-FPGA-Project/
+│
+├── apb3_master.v
+├── apb3_decoder.v
+│
+├── FIFO.v
+├── apb_fifo_slave.v
+│
+├── pwm_slave.v
+│
+├── uart_slave.v
+├── uart_transmitter.v
+├── baud_generator.v
+│
+├── elapsed_timer.v
+├── timer_display_mux.v
+│
+├── debounce.v
+├── edge_detector.v
+│
+├── hex_to_7seg.v
+├── display_mux.v
+│
+├── top.v
+├── top_tb.v
+│
+└── Nexys_A7.xdc
 ```
 
-## 4. Add Constraints
+---
 
-Add:
+# ▶️ How to Run
+
+### 1. Open Vivado
+
+Create/open the Vivado project targeting:
 
 ```text
-NexysA7.xdc
+XC7A100TCSG324-1
 ```
 
-to the project.
+### 2. Add Design Sources
 
-## 5. Select the Top Module
+Add all `.v` files from the project.
 
-For FPGA implementation:
+### 3. Add Constraints
+
+Add the Nexys A7 `.xdc` file.
+
+### 4. Set Top Module
+
+Set:
 
 ```text
-top.v
+top
 ```
 
-should be selected as the design top.
+as the synthesis/implementation top module.
 
-For timer behavioral simulation:
+For simulation, use:
 
 ```text
-elapsed_timer_tb.v
+top_tb
 ```
 
-should be selected as the simulation top.
+as the simulation top.
 
-## 6. Run Behavioral Simulation
-
-Go to:
-
-```text
-Flow Navigator
-    → Simulation
-        → Run Simulation
-            → Run Behavioral Simulation
-```
-
-Observe:
-
-```text
-clk
-rst
-start
-stop
-running
-bcd_seconds
-```
-
-## 7. Synthesize
-
-Run:
-
-```text
-Run Synthesis
-```
-
-## 8. Implement
-
-Run:
-
-```text
-Run Implementation
-```
-
-## 9. Generate Bitstream
-
-Run:
-
-```text
-Generate Bitstream
-```
-
-## 10. Program the FPGA
+### 5. Run Behavioral Simulation
 
 Open:
 
 ```text
-Hardware Manager
+Flow Navigator
+→ Simulation
+→ Run Behavioral Simulation
 ```
 
-Connect the Nexys A7 board and program the generated bitstream.
-
----
-
-# 📊 Expected Working
-
-The complete system works approximately as follows:
+Then add the following signals to the waveform:
 
 ```text
-             User Input
-                 │
-                 ▼
-          ┌──────────────┐
-          │   APB Master │
-          └──────┬───────┘
-                 │
-                 ▼
-          ┌──────────────┐
-          │ APB Decoder  │
-          └──────┬───────┘
-                 │
-        ┌────────┼────────┐
-        │        │        │
-        ▼        ▼        ▼
-      FIFO      PWM     Timer
-        │        │        │
-        └────────┼────────┘
-                 │
-                 ▼
-          7-Segment Display
+fifo_wr_en
+fifo_rd_en
+timer_running
+timer_seconds
 ```
 
-The timer provides information about the elapsed processing time of the selected operation.
+Click:
+
+```text
+Run All
+```
+
+and observe the timer behavior.
 
 ---
 
-# ⭐ Key Features
+# 🔬 Hardware Testing
 
-* ✅ AMBA APB3 communication
-* ✅ Modular Verilog design
-* ✅ APB master
-* ✅ APB address decoder
-* ✅ FIFO peripheral
-* ✅ PWM peripheral
-* ✅ Elapsed-time timer
-* ✅ 7-segment display interface
-* ✅ LED-based debugging
-* ✅ Behavioral simulation support
-* ✅ FPGA implementation support
-* ✅ Nexys A7-100T compatible
+After successful behavioral simulation:
+
+```text
+Synthesis
+    ↓
+Implementation
+    ↓
+Generate Bitstream
+    ↓
+Program FPGA
+```
+
+Then:
+
+### FIFO Write
+
+Set the required switch data/address and press:
+
+```text
+BTNU
+```
+
+The FIFO write occurs and the timer starts.
+
+### FIFO Read
+
+Press:
+
+```text
+BTND
+```
+
+The FIFO read occurs and the timer stops.
+
+The final elapsed time remains visible on the 7-segment display.
 
 ---
 
-# 🔮 Future Improvements
+# 🎯 Project Objectives
 
-Possible future enhancements include:
+The main objectives of this project are:
 
-* UART interface for external commands
-* More APB peripherals
-* Configurable timer resolution
-* Countdown timer mode
-* Interrupt support
-* FIFO depth expansion
-* More PWM channels
-* Register-based timer control
-* Performance measurement of individual APB transactions
-* Automated testbench verification
+* Implement an APB3-based peripheral architecture.
+* Interface multiple peripherals through a common APB bus.
+* Implement FIFO-based data storage.
+* Generate configurable PWM output.
+* Implement UART transmission.
+* Measure FIFO processing time using an FPGA timer.
+* Display elapsed time on a multiplexed 7-segment display.
+* Verify the complete system through behavioral simulation.
+* Implement and test the design on the Nexys A7 FPGA board.
 
 ---
 
-# 👩‍💻 Authors
+# 📌 Key Learning Outcomes
+
+This project provides practical understanding of:
+
+* AMBA APB3 protocol
+* Master-slave communication
+* Address decoding
+* Memory-based FIFO design
+* PWM generation
+* UART transmission
+* Clock-based timing
+* Button debouncing
+* Edge detection
+* 7-segment multiplexing
+* Verilog HDL
+* FPGA implementation
+* Behavioral simulation and waveform analysis
+
+---
+
+## 👩‍💻 Author
 
 **Jiya Mulla**
-Electronics and Telecommunication Engineering
-Rajarambapu Institute of Technology, Islampur
 
-**Project:** FPGA-Based APB3 FIFO, Elapsed-Time Timer & PWM Controller
+Electronics & Telecommunication Engineering
+
+FPGA / Verilog HDL Project
 
 ---
 
-# 📜 License
+## ⭐ Project Highlights
 
-This project is developed for **academic and educational purposes**.
-
-You are free to study and modify the source code with appropriate attribution.
+```text
+APB3 Master
+     +
+APB3 Decoder
+     +
+UART
+     +
+FIFO
+     +
+PWM
+     +
+Elapsed Timer
+     +
+7-Segment Display
+     =
+Complete FPGA-Based APB3 Peripheral System
+```
